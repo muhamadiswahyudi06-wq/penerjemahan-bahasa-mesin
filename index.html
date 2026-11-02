@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Penerjemah Bahasa Mesin</title>
+<style>
+  :root {
+    --bg: #0f1b2d;
+    --panel: #172942;
+    --line: #2b4263;
+    --tape: #cfe3dc;
+    --ink: #eaf1f7;
+    --muted: #8fa5bf;
+    --accent: #ffb703;
+    --ok: #7bd9a6;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 20px 64px; }
+  h1 { font-size: clamp(1.9rem, 5vw, 3rem); margin: 0 0 6px; letter-spacing: -0.02em; }
+  .lead { color: var(--muted); margin: 0 0 28px; max-width: 60ch; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs button {
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    padding: 8px 16px; border-radius: 8px; font: inherit; cursor: pointer;
+  }
+  .tabs button[aria-pressed="true"] { background: var(--accent); color: #1a1300; border-color: var(--accent); font-weight: 600; }
+
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  textarea {
+    width: 100%; min-height: 110px; resize: vertical; padding: 14px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 10px; font: 1.05rem/1.5 Consolas, "Courier New", monospace;
+  }
+  textarea:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .tape-wrap { margin: 28px 0 8px; }
+  .tape-title { font-weight: 600; margin-bottom: 8px; }
+  .tape-scroll { overflow-x: auto; padding-bottom: 6px; }
+  .tape {
+    display: inline-flex; gap: 0; background: var(--tape); border-radius: 6px;
+    padding: 10px 10px 6px; min-width: 100%;
+  }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 30px; flex: none; }
+  .hole { width: 16px; height: 16px; border-radius: 50%; background: #cfe3dc; box-shadow: inset 0 0 0 2px #9fb9b0; }
+  .hole.on { background: var(--bg); box-shadow: none; }
+  .col .lbl { color: #243a52; font: 600 0.8rem Consolas, monospace; height: 20px; }
+  .tape-note { color: var(--muted); font-size: 0.88rem; margin-top: 6px; }
+
+  .result-head { display: flex; justify-content: space-between; align-items: center; margin: 28px 0 8px; gap: 12px; flex-wrap: wrap; }
+  .result-head h2 { margin: 0; font-size: 1.2rem; }
+  .copy {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    padding: 7px 14px; border-radius: 8px; font: inherit; cursor: pointer;
+  }
+  .copy.done { border-color: var(--ok); color: var(--ok); }
+
+  .out {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+    font: 1.05rem/1.7 Consolas, "Courier New", monospace; word-break: break-word; min-height: 52px;
+  }
+  .out .empty { color: var(--muted); font-family: inherit; }
+
+  .table-scroll { overflow-x: auto; margin-top: 20px; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-family: Consolas, "Courier New", monospace; }
+  th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { background: var(--panel); font-family: "Segoe UI", system-ui, sans-serif; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.bin { color: var(--accent); }
+
+  .dl {
+    margin-top: 36px; padding: 18px 20px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .dl h2 { margin: 0 0 4px; font-size: 1.1rem; }
+  .dl p { margin: 0; color: var(--muted); max-width: 52ch; }
+  .dl-btn {
+    background: var(--accent); color: #1a1300; font-weight: 600; text-decoration: none;
+    padding: 10px 18px; border-radius: 8px; overflow-wrap: anywhere;
+  }
+  .dl-list { display: flex; gap: 10px; flex-wrap: wrap; }
+  .dl-btn.alt { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  .dl-btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .err { color: #ff9b8a; margin-top: 8px; min-height: 1.4em; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: no-preference) { .copy { transition: border-color .15s, color .15s; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Penerjemah Bahasa Mesin</h1>
+  <p class="lead">Ubah teks biasa menjadi kode ASCII dan biner yang dipahami komputer, atau terjemahkan biner kembali menjadi teks.</p>
+
+  <div class="tabs" role="group" aria-label="Arah terjemahan">
+    <button type="button" id="tabEnc" aria-pressed="true">Teks ke biner</button>
+    <button type="button" id="tabDec" aria-pressed="false">Biner ke teks</button>
+  </div>
+
+  <label for="input" id="inputLabel">Tulis teks di sini</label>
+  <textarea id="input" placeholder="Contoh: Halo Dunia" autofocus></textarea>
+  <div class="err" id="err" role="alert"></div>
+
+  <!-- Mode teks ke biner -->
+  <section id="encView">
+    <div class="tape-wrap">
+      <div class="tape-title">Pita berlubang</div>
+      <div class="tape-scroll"><div class="tape" id="tape"></div></div>
+      <div class="tape-note">Setiap kolom satu karakter. Lubang gelap berarti bit 1, lubang terang berarti bit 0. Bit paling atas adalah bit terbesar.</div>
+    </div>
+
+    <div class="result-head">
+      <h2>Hasil biner</h2>
+      <button type="button" class="copy" id="copyBin">Salin biner</button>
+    </div>
+    <div class="out" id="binOut"></div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Karakter</th><th>Desimal (ASCII)</th><th>Heksadesimal</th><th>Biner</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Mode biner ke teks -->
+  <section id="decView" hidden>
+    <div class="result-head">
+      <h2>Hasil teks</h2>
+      <button type="button" class="copy" id="copyTxt">Salin teks</button>
+    </div>
+    <div class="out" id="txtOut"></div>
+  </section>
+
+  <section class="dl">
+    <div>
+      <h2>Aplikasi versi Windows</h2>
+      <p>Unduh penerjemah ini sebagai aplikasi .exe untuk dijalankan di komputer Windows tanpa browser.</p>
+    </div>
+    <a class="dl-btn" href="penerjemah_bahasa_mesin.exe" download>Unduh penerjemah_bahasa_mesin.exe</a>
+  </section>
+
+  <footer>Karakter di luar ASCII (misalnya huruf beraksen atau emoji) ditulis sebagai beberapa byte UTF-8.</footer>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var input = $("input"), err = $("err");
+  var mode = "enc";
+
+  function toBytes(text) {
+    // Per karakter -> daftar byte, supaya tiap baris tabel mewakili satu karakter
+    var items = [];
+    var enc = new TextEncoder();
+    Array.from(text).forEach(function (ch) {
+      items.push({ ch: ch, bytes: Array.from(enc.encode(ch)) });
+    });
+    return items;
+  }
+  function bin8(n) { return n.toString(2).padStart(8, "0"); }
+  function hex2(n) { return n.toString(16).toUpperCase().padStart(2, "0"); }
+  function shown(ch) {
+    if (ch === " ") return "(spasi)";
+    if (ch === "\n") return "(baris baru)";
+    if (ch === "\t") return "(tab)";
+    return ch;
+  }
+
+  function encode() {
+    err.textContent = "";
+    var items = toBytes(input.value);
+    var tape = $("tape"), rows = $("rows"), out = $("binOut");
+    tape.innerHTML = ""; rows.innerHTML = "";
+    var all = [];
+
+    if (!items.length) {
+      out.innerHTML = '<span class="empty">Hasil biner akan muncul di sini.</span>';
+      return;
+    }
+
+    items.forEach(function (it) {
+      it.bytes.forEach(function (b, i) {
+        all.push(bin8(b));
+
+        // kolom pita
+        var col = document.createElement("div");
+        col.className = "col";
+        var bits = bin8(b);
+        for (var k = 0; k < 8; k++) {
+          var h = document.createElement("div");
+          h.className = "hole" + (bits[k] === "1" ? " on" : "");
+          col.appendChild(h);
+        }
+        var l = document.createElement("div");
+        l.className = "lbl";
+        l.textContent = i === 0 ? (it.ch.trim() === "" ? "_" : it.ch) : "";
+        col.appendChild(l);
+        tape.appendChild(col);
+
+        // baris tabel
+        var tr = document.createElement("tr");
+        [i === 0 ? shown(it.ch) : "(lanjutan)", String(b), hex2(b), bits].forEach(function (v, idx) {
+          var td = document.createElement("td");
+          td.textContent = v;
+          if (idx === 3) td.className = "bin";
+          tr.appendChild(td);
+        });
+        rows.appendChild(tr);
+      });
+    });
+    out.textContent = all.join(" ");
+  }
+
+  function decode() {
+    err.textContent = "";
+    var out = $("txtOut");
+    var raw = input.value.replace(/[^01]/g, "");
+    if (!raw) {
+      out.innerHTML = '<span class="empty">Hasil teks akan muncul di sini.</span>';
+      return;
+    }
+    if (/[^01\s]/.test(input.value)) {
+      err.textContent = "Hanya angka 0 dan 1 yang dibaca. Karakter lain diabaikan.";
+    }
+    if (raw.length % 8 !== 0) {
+      err.textContent = "Jumlah bit harus kelipatan 8 (satu karakter = 8 bit). Sekarang ada " + raw.length + " bit.";
+      out.innerHTML = '<span class="empty">Lengkapi bitnya dulu.</span>';
+      return;
+    }
+    var bytes = new Uint8Array(raw.length / 8);
+    for (var i = 0; i < bytes.length; i++) bytes[i] = parseInt(raw.substr(i * 8, 8), 2);
+    out.textContent = new TextDecoder("utf-8").decode(bytes);
+  }
+
+  function render() { mode === "enc" ? encode() : decode(); }
+
+  function setMode(m) {
+    mode = m;
+    $("tabEnc").setAttribute("aria-pressed", m === "enc");
+    $("tabDec").setAttribute("aria-pressed", m === "dec");
+    $("encView").hidden = m !== "enc";
+    $("decView").hidden = m !== "dec";
+    $("inputLabel").textContent = m === "enc" ? "Tulis teks di sini" : "Tempel kode biner di sini";
+    input.placeholder = m === "enc" ? "Contoh: Halo Dunia" : "Contoh: 01001000 01100001 01101100 01101111";
+    input.value = "";
+    render();
+  }
+
+  function copy(btn, getText, label) {
+    btn.addEventListener("click", function () {
+      var text = getText();
+      if (!text) return;
+      var done = function () {
+        btn.classList.add("done"); btn.textContent = "Tersalin";
+        setTimeout(function () { btn.classList.remove("done"); btn.textContent = label; }, 1500);
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done);
+      else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta); done();
+      }
+    });
+  }
+
+  $("tabEnc").addEventListener("click", function () { setMode("enc"); });
+  $("tabDec").addEventListener("click", function () { setMode("dec"); });
+  input.addEventListener("input", render);
+  copy($("copyBin"), function () { var t = $("binOut"); return t.querySelector(".empty") ? "" : t.textContent; }, "Salin biner");
+  copy($("copyTxt"), function () { var t = $("txtOut"); return t.querySelector(".empty") ? "" : t.textContent; }, "Salin teks");
+
+  render();
+})();
+</script>
+</body>
+</html>
